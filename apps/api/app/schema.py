@@ -4,11 +4,13 @@ from typing import List, Optional, Literal
 class HealthResponse(BaseModel):
     ok: bool
 
+AccessLevel = Literal["public", "internal", "confidential", "restricted"]
+
 class IngestRequest(BaseModel):
-    title: string
+    title: str
     policyKey: str
     effectiveDate: str
-    access: Literal["public", "internal", "confidential", "restricted"]
+    access: AccessLevel
     tags: List[str]
     content: str
 
@@ -39,7 +41,7 @@ class Doc(BaseModel):
 
 class ChatRequest(BaseModel):
     userId: str
-    role: Literal["public", "internal", "confidential", "restricted"]
+    role: AccessLevel
     question: str
 
 class Citation(BaseModel):

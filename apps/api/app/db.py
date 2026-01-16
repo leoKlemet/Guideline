@@ -77,7 +77,6 @@ def init_db():
     conn.commit()
     return conn
 
-@contextmanager
 def get_db():
     conn = connect()
     try:

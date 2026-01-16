@@ -17,7 +17,7 @@ from .retrieval import (
 
 import sqlite3
 
-app = FastAPI()
+app = FastAPI(docs_url="/swagger", redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,
