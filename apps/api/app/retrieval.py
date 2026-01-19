@@ -73,10 +73,22 @@ def detect_conflict(citations: List[dict], question: str) -> bool:
     # Too naive; for prototype, we treat multiple docs as possible conflict
     return unique_docs >= 2 and len(dates) >= 2
 
-def build_answer(question: str, citations: List[dict], role: str) -> str:
-    # Template-y answer to look professional in demo.
-    q = question.lower()
+import google.generativeai as genai
+import os
 
+# Configure in main.py, but we can helper here
+def get_model():
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("WARN: No GEMINI_API_KEY found. AI answers will fail.")
+        return None
+    genai.configure(api_key=api_key)
+    return genai.GenerativeModel('gemini-flash-latest')
+
+def build_answer(question: str, citations: List[dict], role: str) -> str:
+    q = question.lower()
+    
+    # Still keep the schedule override for now as that's a different "skill"
     mention_schedule = bool(re.search(r'schedule|shift|on[- ]?call|availability|hours|holiday', q, re.IGNORECASE))
     if mention_schedule:
         return "I can help with schedule questions on the Schedule tab. For policy questions, I’ll cite the exact section and effective date."
@@ -84,25 +96,44 @@ def build_answer(question: str, citations: List[dict], role: str) -> str:
     if not citations:
         return f"I couldn’t find this in the currently ingested policies for your access level (**{role}**). I can route this to the Review Queue for an official answer."
 
-    # Try to craft a more specific answer for common policy prompts
-    if re.search(r'receipt', q):
-        return "Receipts are required for expenses above **$25**. Keep itemized receipts when applicable."
-    if re.search(r'meal|food', q):
-        return "Meals are capped at **$60/day**, and an itemized receipt is required."
-    if re.search(r'hotel', q):
-        return "Hotels are capped at **$220/night**. Exceptions require approval."
-    if re.search(r'rideshare|uber|lyft|airport', q):
-        return "Rideshare is allowed for airport transit. For other cases, follow the transportation guidance in the travel policy."
+    # REAL LLM GENERATION
+    model = get_model()
+    if not model:
+        return "System configuration error: GEMINI_API_KEY is missing. Please set it in .env to enable AI generation."
 
-    # Default:
-    top = citations[0]
-    return f"Here’s what the policy says (with citations). The most relevant section is from **{top['docTitle']}** (p.{top['pageStart']})."
+    # Construct Context
+    context_text = ""
+    print(f"DEBUG: Generating answer for '{question}' with {len(citations)} citations.")
+    for c in citations:
+        txt = c.get('quote', '')
+        print(f"DEBUG: Citation: {c.get('docTitle')} - {txt[:50]}...")
+        context_text += f"---\nDocument: {c.get('docTitle', 'Unknown')}\nPage: {c.get('pageStart')}\nContent: {txt}\n"
+
+    prompt = f"""You are a helpful internal policy assistant for a company. 
+    Answer the user's question based ONLY on the following context (citations from policy documents).
+    
+    Rule 1: If the answer is not in the context, say "I don't have enough information in the provided policies to answer this."
+    Rule 2: Cite the source (Document title or page) naturally if relevant, but the UI already shows citations, so focus on the answer text.
+    Rule 3: Be concise and professional.
+    Rule 4: Do not include "In the context..." or "According to the documents..." prefixes excessively. just answer directly.
+    
+    Context:
+    {context_text}
+    
+    User Question: {question}
+    """
+
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"I encountered an error generating the answer: {str(e)}"
 
 def confidence_from_distance(best_distance: float) -> str:
     # Prototype heuristic
     # smaller distance => better
-    if best_distance <= 0.25:
+    if best_distance <= 0.35: # Adjusted slightly for semantics
         return "High"
-    if best_distance <= 0.5:
+    if best_distance <= 0.6:
         return "Medium"
     return "Low"
