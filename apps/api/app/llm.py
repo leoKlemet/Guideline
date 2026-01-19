@@ -74,8 +74,8 @@ async def _openai_chat(question: str, candidates: List[Dict]) -> LLMResult:
 
     # 2. Construct Prompt (Force JSON)
     system_prompt = (
-        "You are a helpful internal policy assistant.\n"
-        "Use ONLY the provided Context to answer the User Question.\n"
+        "You are a helpful internal policy assistant. Answer the user's question in a friendly, professional manner using complete sentences.\n"
+        "Use ONLY the provided Context to answer the User Question. Do not hallucinate.\n"
         "If sources are insufficient or conflicting, set escalate=true.\n"
         "Return ONLY valid JSON with this schema:\n"
         "{\n"
@@ -91,23 +91,32 @@ async def _openai_chat(question: str, candidates: List[Dict]) -> LLMResult:
     
     # 3. Call Endpoint
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        # Local LLMs can be slow to load/process, increasing timeout to 120s
+        async with httpx.AsyncClient(timeout=120.0) as client:
             # Note: headers often require Authorization
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             
             resp = await client.post(
                 f"{base_url}/chat/completions",
                 json={
-                    "model": model,
+                    "model": "local-model", # Route to whatever is loaded
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_message}
                     ],
                     "temperature": 0.0,
-                    # "response_format": {"type": "json_object"} # Not all local servers support this logic yet, relying on prompt
+                    "max_tokens": 2000
                 },
                 headers=headers
             )
+            
+            if resp.status_code != 200:
+                print(f"LLM Request Failed: {resp.status_code}")
+                try:
+                    print(f"LLM Error Body: {resp.text}")
+                except:
+                    pass
+            
             resp.raise_for_status()
             result = resp.json()
             
