@@ -7,10 +7,11 @@ client = TestClient(app)
 
 def setup_module():
     # Use a test DB
-    os.environ["GUIDELINE_DB_PATH"] = "test_guideline.db"
+    os.environ["GUIDELINE_DB_PATH"] = os.path.abspath("test_guideline.db")
     if os.path.exists("test_guideline.db"):
         os.remove("test_guideline.db")
-    init_db()
+    conn = init_db()
+    conn.close()
     
     # Seed data
     from app.seed import seed
