@@ -75,6 +75,7 @@ async def _openai_chat(question: str, candidates: List[Dict]) -> LLMResult:
     # 2. Construct Prompt (Force JSON)
     system_prompt = (
         "You are a helpful internal policy assistant. Answer the user's question in a friendly, professional manner using complete sentences.\n"
+        "CRITICAL: Do not answer with a single number or word. Example: Instead of '5', say 'You receive 5 sick days per year.'\n"
         "Use ONLY the provided Context to answer the User Question. Do not hallucinate.\n"
         "If sources are insufficient or conflicting, set escalate=true.\n"
         "Return ONLY valid JSON with this schema:\n"
