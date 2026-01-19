@@ -3,5 +3,5 @@ uvicorn
 pydantic
 httpx
 pytest
-google-generativeai
 python-dotenv
+openai

@@ -73,17 +73,7 @@ def detect_conflict(citations: List[dict], question: str) -> bool:
     # Too naive; for prototype, we treat multiple docs as possible conflict
     return unique_docs >= 2 and len(dates) >= 2
 
-import google.generativeai as genai
 import os
-
-# Configure in main.py, but we can helper here
-def get_model():
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("WARN: No GEMINI_API_KEY found. AI answers will fail.")
-        return None
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel('gemini-flash-latest')
 
 def build_answer(question: str, citations: List[dict], role: str) -> str:
     q = question.lower()
@@ -96,38 +86,62 @@ def build_answer(question: str, citations: List[dict], role: str) -> str:
     if not citations:
         return f"I couldn’t find this in the currently ingested policies for your access level (**{role}**). I can route this to the Review Queue for an official answer."
 
-    # REAL LLM GENERATION
-    model = get_model()
-    if not model:
-        return "System configuration error: GEMINI_API_KEY is missing. Please set it in .env to enable AI generation."
-
-    # Construct Context
-    context_text = ""
-    print(f"DEBUG: Generating answer for '{question}' with {len(citations)} citations.")
-    for c in citations:
-        txt = c.get('quote', '')
-        print(f"DEBUG: Citation: {c.get('docTitle')} - {txt[:50]}...")
-        context_text += f"---\nDocument: {c.get('docTitle', 'Unknown')}\nPage: {c.get('pageStart')}\nContent: {txt}\n"
-
-    prompt = f"""You are a helpful internal policy assistant for a company. 
-    Answer the user's question based ONLY on the following context (citations from policy documents).
-    
-    Rule 1: If the answer is not in the context, say "I don't have enough information in the provided policies to answer this."
-    Rule 2: Cite the source (Document title or page) naturally if relevant, but the UI already shows citations, so focus on the answer text.
-    Rule 3: Be concise and professional.
-    Rule 4: Do not include "In the context..." or "According to the documents..." prefixes excessively. just answer directly.
-    
-    Context:
-    {context_text}
-    
-    User Question: {question}
-    """
-
+    # AI GENERATION via LM Studio (OpenAI Compatible)
     try:
-        response = model.generate_content(prompt)
-        return response.text
+        from openai import OpenAI
+        
+        # Configure LM Studio client (default port 1234)
+        base_url = os.environ.get("LM_STUDIO_URL", "http://localhost:1234/v1")
+        # Ensure base_url doesn't end with slash if needed (OpenAI client handles it usually)
+        
+        # Set a longer timeout for local testing (e.g., 120 seconds)
+        # Note: Local LLMs can be slow depending on hardware.
+        client = OpenAI(base_url=base_url, api_key="lm-studio", timeout=120.0)
+        
+        # Construct Context
+        context_text = ""
+        citation_info = f"DEBUG: Generating answer for '{question}' with {len(citations)} citations."
+        print(citation_info)
+        
+        for c in citations:
+            txt = c.get('quote', '')
+            context_text += f"---\nDocument: {c.get('docTitle', 'Unknown')}\nPage: {c.get('pageStart')}\nContent: {txt}\n"
+
+        prompt = f"""You are a helpful internal policy assistant for a company. 
+        Answer the user's question based ONLY on the following context (citations from policy documents).
+        
+        Rule 1: If the answer is not in the context, say "I don't have enough information in the provided policies to answer this."
+        Rule 2: Cite the source (Document title or page) naturally if relevant, but the UI already shows citations, so focus on the answer text.
+        Rule 3: Be concise and professional.
+        Rule 4: Do not include "In the context..." or "According to the documents..." prefixes excessively. just answer directly.
+        
+        Context:
+        {context_text}
+        
+        User Question: {question}
+        """
+        
+        model_id = "local-model" 
+        
+        print(f"DEBUG: Calling LM Studio at {base_url}...")
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
+        return response.choices[0].message.content
+        
+    except ImportError:
+        return "Error: 'openai' library is not installed. Please install it."
     except Exception as e:
-        return f"I encountered an error generating the answer: {str(e)}"
+        print(f"ERROR: LM Studio generation failed: {e}")
+        err_msg = str(e)
+        if "Connection refused" in err_msg or "target machine" in err_msg:
+             return f"Error: Could not connect to LM Studio at {os.environ.get('LM_STUDIO_URL', 'http://localhost:1234/v1')}. Is it running?"
+        return f"I encountered an error generating the answer: {err_msg}"
 
 def confidence_from_distance(best_distance: float) -> str:
     # Prototype heuristic

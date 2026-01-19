@@ -22,17 +22,10 @@ print("-" * 20)
 try:
     print("Generating...")
     answer = build_answer(question, citations, "internal")
-    print("Answer from Gemini:")
+    print("Answer from LM Studio:")
     print(answer)
 except Exception as e:
     print(f"Error calling build_answer: {e}")
 
-print("\nDebug: Listing available models...")
-import google.generativeai as genai
-try:
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            print(m.name)
-except Exception as e:
-    print(f"Error listing models: {e}")
+print("\nDebug: Testing LM Studio connection...")
 
