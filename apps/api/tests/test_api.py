@@ -15,7 +15,7 @@ def setup_module():
     
     # Seed data
     from app.seed import seed
-    seed()
+    seed([])
 
 def teardown_module():
     if os.path.exists("test_guideline.db"):
@@ -66,4 +66,36 @@ def test_schedule_ask():
     assert response.status_code == 200
     data = response.json()
     assert "Monday" in data["answer"]
-    assert "09:00" in data["answer"]
+    assert "08:00" in data["answer"]
+
+def test_schedule_ask_holiday_january():
+    # As per seed data, 2026-01-01 is New Year's Day
+    response = client.post("/schedule/ask", json={"question": "Any holidays in January?"})
+    assert response.status_code == 200
+    data = response.json()
+    assert "New Year's Day" in data["answer"]
+    assert "2026-01-01" in data["answer"]
+
+def test_schedule_ask_holiday_december():
+    # As per seed data, 2026-12-25 is Christmas Day
+    response = client.post("/schedule/ask", json={"question": "Any holidays in December?"})
+    assert response.status_code == 200
+    data = response.json()
+    assert "Christmas Day" in data["answer"]
+    assert "2026-12-25" in data["answer"]
+
+def test_schedule_ask_next_holiday_logic():
+    # This test assumes the implementation will use the current time. 
+    # Since we can't easily mock time inside the seeded app without more work, 
+    # we rely on the fact that the seed data is in 2026.
+    # Current "real" time in context is 2026-01-19.
+    # So "next holiday" should NOT be New Year's Day (2026-01-01), but Personal Day (2026-04-03) or similar.
+    
+    response = client.post("/schedule/ask", json={"question": "When is the next holiday?"})
+    assert response.status_code == 200
+    data = response.json()
+    # Should NOT satisfy New Year's Day as it is passed
+    assert "New Year's Day" not in data["answer"] 
+    # Should satisfy Personal Day (2026-04-03)
+    assert "Personal Day" in data["answer"]
+

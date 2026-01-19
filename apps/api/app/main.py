@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import time
+from datetime import datetime
 from typing import List, Optional
 
 from .db import init_db, get_db
@@ -16,6 +17,11 @@ from .retrieval import (
 )
 
 import sqlite3
+import os
+from dotenv import load_dotenv
+from .llm import compose_answer
+
+load_dotenv()
 
 app = FastAPI(docs_url="/swagger", redoc_url=None)
 
@@ -102,7 +108,7 @@ def list_docs(db: sqlite3.Connection = Depends(get_db)):
     return docs
 
 @app.post("/chat/ask", response_model=QAAnswer)
-def ask_policy(req: ChatRequest, db: sqlite3.Connection = Depends(get_db)):
+async def ask_policy(req: ChatRequest, db: sqlite3.Connection = Depends(get_db)):
     # Role to Access Level mapping
     allowed_access = []
     if req.role == "public":
@@ -190,18 +196,60 @@ def ask_policy(req: ChatRequest, db: sqlite3.Connection = Depends(get_db)):
     answer = build_answer(req.question, citations, req.role)
     
     review_id = None
+    
+    # --- LLM Integration ---
+    if os.getenv("LLM_ENABLED", "0") == "1" and citations:
+        try:
+            llm_result = await compose_answer(req.question, req.role, citations, best_distance)
+            answer = llm_result.answer
+            
+            # Override confidence/review logic based on LLM
+            confidence = llm_result.confidence
+            
+            # If LLM says escalate, force review
+            if llm_result.escalate:
+                low_confidence = True
+                
+            # Filter citations if LLM used specific chunks
+            if llm_result.used_chunk_ids:
+                start_count = len(citations)
+                citations = [c for c in citations if c['chunkId'] in llm_result.used_chunk_ids]
+                # Fallback: if filtering removed all citations (hallucination?), keep originals
+                if not citations and start_count > 0:
+                    citations = [c for c in top_scored if c['dist'] < 0.95][:6]
+                    citations = [{
+                        "chunkId": c['c']['id'],
+                        "docId": c['c']['doc_id'],
+                        "docTitle": doc_titles.get(c['c']['doc_id'], "Unknown"),
+                        "pageStart": c['c']['page_start'],
+                        "pageEnd": c['c']['page_end'],
+                        "quote": c['c']['content'][:220],
+                        "distance": round(c['dist'], 3)
+                    } for c in scored if c['dist'] < 0.95][:6] # Re-construct essentially
+                    
+        except Exception as e:
+            print(f"LLM Failure: {e}")
+            # Fallback to template answer (already set above)
+
     if low_confidence:
         reason = "not_found" if not_found else "conflict" if conflict else "low_confidence"
+        # If LLM escalated, use that reason
+        if os.getenv("LLM_ENABLED") == "1" and citations:
+             pass # Logic handled dynamically above, but could refine 'reason' string
+             
         review_id = uid("rev")
         now = int(time.time() * 1000)
         
         draft_answer = None if not_found else answer
         
+        # Serialize citations safely
+        safe_citations = json.dumps(citations, default=str)
+        
         db.execute("""
             INSERT INTO review_queue (id, question, reason, status, draft_answer, draft_citations_json, created_at, resolved_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            review_id, req.question, reason, "open", draft_answer, json.dumps(citations), now, None
+            review_id, req.question, reason, "open", draft_answer, safe_citations, now, None
         ))
         db.commit()
         
@@ -285,7 +333,54 @@ def ask_schedule(req: ScheduleAskRequest, db: sqlite3.Connection = Depends(get_d
         holidays = s.get('holidays', [])
         if not holidays:
             return {"answer": "No holidays configured."}
-        next_holiday = holidays[0] # Simplification
+
+        # Parse holidays to help with month filtering and date comparison
+        parsed_holidays = []
+        for h in holidays:
+            try:
+                # Parse YYYY-MM-DD
+                dt = datetime.strptime(h['date'], "%Y-%m-%d")
+                parsed_holidays.append({"date": dt, "raw": h})
+            except ValueError:
+                continue
+        
+        # Sort by date
+        parsed_holidays.sort(key=lambda x: x['date'])
+
+        # Check for specific month mention
+        months = {
+            "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+            "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12
+        }
+        
+        target_month = None
+        target_month_name = None
+        for m_name, m_num in months.items():
+            if m_name in q:
+                target_month = m_num
+                target_month_name = m_name.capitalize()
+                break
+        
+        if target_month:
+            # Filter for this month
+            found = [h['raw'] for h in parsed_holidays if h['date'].month == target_month]
+            if not found:
+                return {"answer": f"No holidays found in {target_month_name}."}
+            
+            lines = [f"**{h['name']}** on **{h['date']}**" for h in found]
+            return {"answer": f"Holidays in {target_month_name}: " + ", ".join(lines) + f" ({s['timezone']})."}
+
+        # "Next" holiday logic (default if no month specified)
+        # Filter out past holidays
+        now = datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
+        
+        upcoming = [h['raw'] for h in parsed_holidays if h['raw']['date'] >= today_str]
+        
+        if not upcoming:
+            return {"answer": "No upcoming holidays found in the schedule."}
+
+        next_holiday = upcoming[0]
         return {"answer": f"Next holiday: **{next_holiday['name']}** on **{next_holiday['date']}** ({s['timezone']})."}
         
     for day in s.get('week', []):

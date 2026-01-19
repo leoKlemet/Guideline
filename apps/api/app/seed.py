@@ -21,26 +21,36 @@ Receipts
 Effective Date: 2025-01-01"""
 
 DEFAULT_SCHEDULE = {
-  "timezone": "America/New_York",
-  "week": [
-    { "day": "Monday", "start": "09:00", "end": "17:00", "note": "Focus work" },
-    { "day": "Tuesday", "start": "09:00", "end": "17:00" },
-    { "day": "Wednesday", "start": "09:00", "end": "17:00", "note": "Team sync 11:00" },
-    { "day": "Thursday", "start": "09:00", "end": "17:00" },
-    { "day": "Friday", "start": "09:00", "end": "15:00", "note": "Demo / wrap" },
-  ],
-  "oncall": [{ "from": "2026-01-19", "to": "2026-01-23", "note": "Primary on-call" }],
-  "holidays": [{ "date": "2026-01-20", "name": "Company Holiday" }],
+    "timezone": "America/New_York",
+    "week": [
+        { "day": "Monday", "start": "08:00", "end": "17:00" },
+        { "day": "Tuesday", "start": "08:00", "end": "17:00" },
+        { "day": "Wednesday", "start": "08:00", "end": "17:00" },
+        { "day": "Thursday", "start": "08:00", "end": "17:00" },
+        { "day": "Friday", "start": "08:00", "end": "17:00" },
+    ],
+    "oncall": [],
+    "holidays": [
+        { "date": "2026-01-01", "name": "New Year's Day" },
+        { "date": "2026-04-03", "name": "Personal Day" },
+        { "date": "2026-05-25", "name": "Memorial Day" },
+        { "date": "2026-07-03", "name": "Independence Day (Observed)" },
+        { "date": "2026-09-07", "name": "Labor Day" },
+        { "date": "2026-11-26", "name": "Thanksgiving" },
+        { "date": "2026-11-27", "name": "Day after Thanksgiving" },
+        { "date": "2026-12-24", "name": "Christmas Eve" },
+        { "date": "2026-12-25", "name": "Christmas Day" },
+    ],
 }
 
 import argparse
 from .seed_handbook import seed_handbook
 
-def seed():
+def seed(argv=None):
     parser = argparse.ArgumentParser(description="Seed the Guideline database.")
     parser.add_argument("--handbook-pdf", type=str, help="Path to the Employee Handbook PDF")
     parser.add_argument("--reset-handbook", action="store_true", help="Reset existing handbook entries")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     conn = init_db()
     cursor = conn.cursor()
