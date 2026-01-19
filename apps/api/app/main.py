@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import json
 import time
 from typing import List, Optional
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 from .db import init_db, get_db
 from .schema import (
@@ -174,7 +178,7 @@ def ask_policy(req: ChatRequest, db: sqlite3.Connection = Depends(get_db)):
                 "docTitle": doc_titles.get(c['doc_id'], "Unknown"),
                 "pageStart": c['page_start'],
                 "pageEnd": c['page_end'],
-                "quote": c['content'][:220], # Summarize quote logic could be better but basic slice as placeholder
+                "quote": c['content'][:1500], # Summarize quote logic could be better but basic slice as placeholder
                 "distance": round(item['dist'], 3)
             })
             
@@ -187,7 +191,17 @@ def ask_policy(req: ChatRequest, db: sqlite3.Connection = Depends(get_db)):
     not_found = len(citations) == 0 or best_distance >= 0.9
     low_confidence = not_found or best_distance > 0.5 or conflict
     
-    answer = build_answer(req.question, citations, req.role)
+    answer = "Error generating answer"
+    try:
+        print(f"DEBUG: Calling build_answer with {len(citations)} citations...")
+        answer = build_answer(req.question, citations, req.role)
+        print("DEBUG: build_answer returned successfully")
+    except Exception as e:
+        print(f"ERROR: build_answer failed: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback
+        answer = "I encountered a system error generating the answer."
     
     review_id = None
     if low_confidence:

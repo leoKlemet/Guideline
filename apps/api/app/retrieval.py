@@ -73,10 +73,12 @@ def detect_conflict(citations: List[dict], question: str) -> bool:
     # Too naive; for prototype, we treat multiple docs as possible conflict
     return unique_docs >= 2 and len(dates) >= 2
 
-def build_answer(question: str, citations: List[dict], role: str) -> str:
-    # Template-y answer to look professional in demo.
-    q = question.lower()
+import os
 
+def build_answer(question: str, citations: List[dict], role: str) -> str:
+    q = question.lower()
+    
+    # Still keep the schedule override for now as that's a different "skill"
     mention_schedule = bool(re.search(r'schedule|shift|on[- ]?call|availability|hours|holiday', q, re.IGNORECASE))
     if mention_schedule:
         return "I can help with schedule questions on the Schedule tab. For policy questions, I’ll cite the exact section and effective date."
@@ -84,25 +86,68 @@ def build_answer(question: str, citations: List[dict], role: str) -> str:
     if not citations:
         return f"I couldn’t find this in the currently ingested policies for your access level (**{role}**). I can route this to the Review Queue for an official answer."
 
-    # Try to craft a more specific answer for common policy prompts
-    if re.search(r'receipt', q):
-        return "Receipts are required for expenses above **$25**. Keep itemized receipts when applicable."
-    if re.search(r'meal|food', q):
-        return "Meals are capped at **$60/day**, and an itemized receipt is required."
-    if re.search(r'hotel', q):
-        return "Hotels are capped at **$220/night**. Exceptions require approval."
-    if re.search(r'rideshare|uber|lyft|airport', q):
-        return "Rideshare is allowed for airport transit. For other cases, follow the transportation guidance in the travel policy."
+    # AI GENERATION via LM Studio (OpenAI Compatible)
+    try:
+        from openai import OpenAI
+        
+        # Configure LM Studio client (default port 1234)
+        base_url = os.environ.get("LM_STUDIO_URL", "http://localhost:1234/v1")
+        # Ensure base_url doesn't end with slash if needed (OpenAI client handles it usually)
+        
+        # Set a longer timeout for local testing (e.g., 120 seconds)
+        # Note: Local LLMs can be slow depending on hardware.
+        client = OpenAI(base_url=base_url, api_key="lm-studio", timeout=120.0)
+        
+        # Construct Context
+        context_text = ""
+        citation_info = f"DEBUG: Generating answer for '{question}' with {len(citations)} citations."
+        print(citation_info)
+        
+        for c in citations:
+            txt = c.get('quote', '')
+            context_text += f"---\nDocument: {c.get('docTitle', 'Unknown')}\nPage: {c.get('pageStart')}\nContent: {txt}\n"
 
-    # Default:
-    top = citations[0]
-    return f"Here’s what the policy says (with citations). The most relevant section is from **{top['docTitle']}** (p.{top['pageStart']})."
+        prompt = f"""You are a helpful internal policy assistant for a company. 
+        Answer the user's question based ONLY on the following context (citations from policy documents).
+        
+        Rule 1: If the answer is not in the context, say "I don't have enough information in the provided policies to answer this."
+        Rule 2: Cite the source (Document title or page) naturally if relevant, but the UI already shows citations, so focus on the answer text.
+        Rule 3: Be concise and professional.
+        Rule 4: Do not include "In the context..." or "According to the documents..." prefixes excessively. just answer directly.
+        
+        Context:
+        {context_text}
+        
+        User Question: {question}
+        """
+        
+        model_id = "local-model" 
+        
+        print(f"DEBUG: Calling LM Studio at {base_url}...")
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
+        return response.choices[0].message.content
+        
+    except ImportError:
+        return "Error: 'openai' library is not installed. Please install it."
+    except Exception as e:
+        print(f"ERROR: LM Studio generation failed: {e}")
+        err_msg = str(e)
+        if "Connection refused" in err_msg or "target machine" in err_msg:
+             return f"Error: Could not connect to LM Studio at {os.environ.get('LM_STUDIO_URL', 'http://localhost:1234/v1')}. Is it running?"
+        return f"I encountered an error generating the answer: {err_msg}"
 
 def confidence_from_distance(best_distance: float) -> str:
     # Prototype heuristic
     # smaller distance => better
-    if best_distance <= 0.25:
+    if best_distance <= 0.35: # Adjusted slightly for semantics
         return "High"
-    if best_distance <= 0.5:
+    if best_distance <= 0.6:
         return "Medium"
     return "Low"
