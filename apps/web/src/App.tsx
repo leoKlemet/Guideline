@@ -14,7 +14,7 @@ import {
     Plus,
     RefreshCcw,
 } from "lucide-react";
-import { defaultSchedule } from "./utils/schedule";
+
 
 const BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
@@ -1156,9 +1156,8 @@ function SchedulePage({ api }: { api: any }) {
         setLoading(true);
         try {
             const s = await api.getSchedule().catch(() => null);
-            const config = s || defaultSchedule;
-            setCfg(config);
-            setRaw(JSON.stringify(config, null, 2));
+            setCfg(s);
+            setRaw(s ? JSON.stringify(s, null, 2) : "");
         } finally {
             setLoading(false);
         }
