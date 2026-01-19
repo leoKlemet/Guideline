@@ -5,3 +5,4 @@ httpx
 pytest
 google-generativeai
 python-dotenv
+pypdf

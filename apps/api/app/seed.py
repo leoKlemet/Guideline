@@ -33,10 +33,19 @@ DEFAULT_SCHEDULE = {
   "holidays": [{ "date": "2026-01-20", "name": "Company Holiday" }],
 }
 
+import argparse
+from .seed_handbook import seed_handbook
+
 def seed():
+    parser = argparse.ArgumentParser(description="Seed the Guideline database.")
+    parser.add_argument("--handbook-pdf", type=str, help="Path to the Employee Handbook PDF")
+    parser.add_argument("--reset-handbook", action="store_true", help="Reset existing handbook entries")
+    args = parser.parse_args()
+
     conn = init_db()
     cursor = conn.cursor()
 
+    # 1. Default Seeding (Travel Policy + Schedule)
     # Check if doc exists
     cursor.execute("SELECT id FROM documents WHERE policy_key = ?", ("travel_policy",))
     existing = cursor.fetchone()
@@ -73,7 +82,7 @@ def seed():
             
         print(f"Seeded document: {doc_id} with {len(chunks)} chunks.")
     else:
-        print("Document already seeded.")
+        print("Travel Policy already seeded.")
 
     # Schedule Upsert
     now = int(time.time() * 1000)
@@ -83,6 +92,11 @@ def seed():
     print("Seeded schedule config.")
 
     conn.commit()
+
+    # 2. Handbook Seeding (Optional)
+    if args.handbook_pdf:
+        seed_handbook(conn, args.handbook_pdf, reset=args.reset_handbook)
+
     conn.close()
 
 if __name__ == "__main__":
