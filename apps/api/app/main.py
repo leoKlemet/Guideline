@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import time
+from datetime import datetime
 from typing import List, Optional
 
 from .db import init_db, get_db
@@ -285,7 +286,54 @@ def ask_schedule(req: ScheduleAskRequest, db: sqlite3.Connection = Depends(get_d
         holidays = s.get('holidays', [])
         if not holidays:
             return {"answer": "No holidays configured."}
-        next_holiday = holidays[0] # Simplification
+
+        # Parse holidays to help with month filtering and date comparison
+        parsed_holidays = []
+        for h in holidays:
+            try:
+                # Parse YYYY-MM-DD
+                dt = datetime.strptime(h['date'], "%Y-%m-%d")
+                parsed_holidays.append({"date": dt, "raw": h})
+            except ValueError:
+                continue
+        
+        # Sort by date
+        parsed_holidays.sort(key=lambda x: x['date'])
+
+        # Check for specific month mention
+        months = {
+            "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+            "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12
+        }
+        
+        target_month = None
+        target_month_name = None
+        for m_name, m_num in months.items():
+            if m_name in q:
+                target_month = m_num
+                target_month_name = m_name.capitalize()
+                break
+        
+        if target_month:
+            # Filter for this month
+            found = [h['raw'] for h in parsed_holidays if h['date'].month == target_month]
+            if not found:
+                return {"answer": f"No holidays found in {target_month_name}."}
+            
+            lines = [f"**{h['name']}** on **{h['date']}**" for h in found]
+            return {"answer": f"Holidays in {target_month_name}: " + ", ".join(lines) + f" ({s['timezone']})."}
+
+        # "Next" holiday logic (default if no month specified)
+        # Filter out past holidays
+        now = datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
+        
+        upcoming = [h['raw'] for h in parsed_holidays if h['raw']['date'] >= today_str]
+        
+        if not upcoming:
+            return {"answer": "No upcoming holidays found in the schedule."}
+
+        next_holiday = upcoming[0]
         return {"answer": f"Next holiday: **{next_holiday['name']}** on **{next_holiday['date']}** ({s['timezone']})."}
         
     for day in s.get('week', []):
