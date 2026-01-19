@@ -16,3 +16,6 @@ dist/
 *.db-journal
 *.db-shm
 *.db-wal
+
+# Private Data
+apps/api/data/private/
