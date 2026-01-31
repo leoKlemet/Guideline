@@ -3,5 +3,7 @@ uvicorn
 pydantic
 httpx
 pytest
+python-dotenv
+openai
 pypdf
 python-dotenv

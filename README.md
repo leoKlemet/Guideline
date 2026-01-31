@@ -6,6 +6,18 @@ A prototype repo for "Guideline" with:
 
 ## Run Instructions
 
+### ⚡ Local LLM Setup (Required for AI Features)
+This project uses **LM Studio** for local AI processing to ensure data privacy.
+1.  **Install LM Studio** from [lmstudio.ai](https://lmstudio.ai/).
+2.  **Download a Model**: Search for `Llama 3` (e.g., `Meta-Llama-3-8B-Instruct-Q4_K_M.gguf`) and download it.
+3.  **Start Local Server**:
+    *   Click the **Chat** icon on the left sidebar.
+    *   Select your downloaded model at the top drop down.
+    *   Click the **Developer** icon on the left sidebar.
+    *   Click **Start Server** switch at the top left (next to Status: Stopped).
+    *   Ensure the port is **1234**.
+    *   *Keep LM Studio running in the background.*
+
 ### Backend
 1. Navigate to the api directory:
    ```bash
